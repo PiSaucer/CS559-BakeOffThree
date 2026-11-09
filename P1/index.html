@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P1</title>
+    <script src="./processing.min.js"></script>
+    <script>
+        Processing.prototype.externals = Processing.prototype.externals || {};
+        Processing.logger.println = function (...args) {
+            console.log(...args);
+        };
+
+        Processing.logger.print = function (...args) {
+            console.log(...args);
+        };
+    </script>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: white;
+        }
+
+        canvas {
+            display: block;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        canvas:focus {
+            outline: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas data-processing-sources="P1.pde?v=14"></canvas>
+</body>
+
+</html>
