@@ -5,46 +5,223 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Screen Calculator</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
     <style>
         body {
-            font: 16px system-ui, sans-serif;
-            margin: 2rem;
+            background-color: #f7f8fb;
+        }
+
+        .calculator-container {
+            max-width: 850px;
+        }
+
+        code {
+            color: #6c757d;
+            overflow-wrap: anywhere;
         }
 
         #square {
-            width: 1in;
-            height: 1in;
-            border: 1px solid #2563eb;
-            box-sizing: border-box;
-            background: #dbeafe;
+            width: 96px;
+            height: 96px;
+            border: 2px solid #0d6efd;
+            background-color: #cfe2ff;
             display: grid;
             place-items: center;
-            margin: 1rem 0;
+            text-align: center;
+            font-size: 0.85rem;
         }
 
-        small {
-            color: #555;
+        .result {
+            overflow-wrap: anywhere;
+        }
+
+        .result strong {
+            display: block;
+            font-size: 1.3rem;
         }
     </style>
 </head>
 
 <body>
-    <h2>Screen Calculator</h2>
-    <p id="info"></p>
-    <div id="square">1 x 1 in</div>
-    <small>Square uses CSS inches (1in = 96 CSS px), not guaranteed physical inches. Estimated DPI is not the monitor's
-        measured PPI.</small>
+    <main class="container calculator-container py-4">
+
+        <header class="mb-4">
+            <h1 class="fw-bold">Screen Calculator</h1>
+
+            <p class="text-secondary">
+                Calibrate the physical <strong>1 x 1 inch</strong> input area for COSC 559 Bakeoff 3.
+
+                In browsers, <code>1in</code> is defined as <code>96 CSS px</code>, which is not necessarily one physical inch on your device.
+            </p>
+        </header>
+
+        <!-- Method 1 -->
+        <section class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h5 card-title mb-3">
+                    Method 1: Measure the actual input square
+                    <span class="badge text-bg-primary">Recommended</span>
+                </h2>
+
+                <p>
+                    Measure the black input square on your device using a real ruler. This method accounts for canvas scaling automatically.
+                </p>
+
+                <div class="row g-3 mb-3">
+
+                    <div class="col-12 col-md-6">
+                        <label for="currentDpi" class="form-label fw-semibold">Current <code>DPIofYourDeviceScreen</code></label>
+
+                        <input id="currentDpi" class="form-control" type="number" inputmode="numeric" min="1" step="1" placeholder="Enter current DPI">
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label for="p1Inches" class="form-label fw-semibold">Measured black square width (physical inches)</label>
+                        <input id="p1Inches" class="form-control" type="number" inputmode="decimal" min="0.01" step="any" placeholder="e.g. 0.6">
+                    </div>
+
+                </div>
+
+                <div id="directResult" class="result bg-body-tertiary rounded p-3 mb-3" aria-live="polite">Enter the measured square width above.</div>
+
+                <p class="small text-secondary mb-0">
+                    Formula: new DPI = current DPI / measured width in physical inches. Re-measure after adjusting the value.
+                </p>
+
+            </div>
+        </section>
+
+        <!-- Method 2 -->
+        <section class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="h5 card-title mb-3">Method 2: Reference-square calibration</h2>
+
+                <p>Measure this <strong>96 CSS-pixel</strong> square using a ruler. It is not automatically 1 physical inch. </p>
+
+                <div id="square" class="mb-4">96 CSS px</div>
+
+                <div class="row g-3 mb-3">
+
+                    <div class="col-12 col-md-6">
+                        <label for="refInches" class="form-label fw-semibold">Measured blue square width (physical inches)</label>
+                        <input id="refInches" class="form-control" type="number" inputmode="decimal" min="0.01" step="any" placeholder="e.g. 0.6">
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label for="sketchWidth" class="form-label fw-semibold">Processing canvas width (sketch pixels)</label>
+                        <input id="sketchWidth" class="form-control" type="number" inputmode="numeric" min="1" step="1" value="800">
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label for="displayWidth" class="form-label fw-semibold">Displayed canvas width (CSS pixels)</label>
+                        <input id="displayWidth" class="form-control" type="number" inputmode="decimal" min="1" step="any" value="800">
+                    </div>
+
+                </div>
+
+                <div id="referenceResult" class="result bg-body-tertiary rounded p-3 mb-3" aria-live="polite">Enter a measured square width above.</div>
+
+                <p class="small text-secondary mb-0">
+                    Formula: measured CSS px per physical inch x (sketch width / displayed canvas width).
+
+                    The 800 / 800 defaults only apply if the canvas is displayed at native size.
+
+                    If the canvas is resized, enter its actual rendered CSS width.
+                </p>
+
+            </div>
+        </section>
+
+        <!-- Browser Diagnostics -->
+        <section class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h2 class="h5 card-title mb-3">Browser diagnostics</h2>
+                <p id="info" class="text-secondary"></p>
+                <p class="small text-secondary mb-0">
+                    Device pixel ratio describes browser pixel scaling, not physical PPI. Changing zoom, orientation, or canvas scaling requires recalibration.
+                </p>
+            </div>
+        </section>
+
+    </main>
+
     <script>
-        function update() {
-            const dpr = window.devicePixelRatio || 1;
-            document.getElementById('info').innerHTML =
-                `Screen: ${screen.width} x ${screen.height} CSS px<br>` +
-                `Viewport: ${innerWidth} x ${innerHeight} CSS px<br>` +
-                `Device pixel ratio: ${dpr.toFixed(2)}<br>` +
-                `Estimated device pixels/in: ${(96 * dpr).toFixed(1)} (not physical PPI)`;
+        const el = id => document.getElementById(id);
+
+        const positive = id => {
+            const text = el(id).value.trim();
+            if (!text) return null;
+            const n = Number(text);
+            return Number.isFinite(n) && n > 0 ? n : null;
+        };
+
+        const fmt = n => n.toLocaleString(
+            undefined,
+            { maximumFractionDigits: 2 }
+        );
+
+        function show(element, value, label) {
+            element.replaceChildren();
+
+            if (!Number.isFinite(value) || value <= 0 || !Number.isSafeInteger(Math.round(value))) {
+                element.textContent = 'Enter valid positive measurements.';
+                return;
+            }
+
+            const rounded = Math.round(value);
+
+            const title = document.createElement('strong');
+            title.textContent = label + ': ' + fmt(rounded);
+
+            const example = document.createElement('code');
+            example.textContent = 'final int DPIofYourDeviceScreen = ' + rounded + ';';
+
+            element.append(title, example);
         }
+
+        function update() {
+            const current = positive('currentDpi');
+            const measured = positive('p1Inches');
+
+            if (current && measured) {
+                show(el('directResult'), current / measured, 'Suggested DPI');
+            } else {
+                el('directResult').textContent = 'Enter a valid current DPI and physical width in inches.';
+            }
+
+            const reference = positive('refInches');
+            const sketch = positive('sketchWidth');
+            const display = positive('displayWidth');
+
+            if (reference && sketch && display) {
+                const renderedSquareCssWidth = el('square').getBoundingClientRect().width;
+
+                const cssPixelsPerPhysicalInch = renderedSquareCssWidth / reference;
+
+                show(el('referenceResult'), cssPixelsPerPhysicalInch * sketch / display, 'Suggested DPI');
+            } else {
+                el('referenceResult').textContent = 'Enter the physical blue square width and canvas dimensions.';
+            }
+
+            const dpr = window.devicePixelRatio || 1;
+
+            el('info').textContent =
+                `Screen: ${screen.width} x ${screen.height} CSS px | ` +
+                `Viewport: ${innerWidth} x ${innerHeight} CSS px | ` +
+                `Device pixel ratio: ${fmt(dpr)}`;
+        }
+
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', update);
+        });
+
         addEventListener('resize', update);
-        setInterval(update, 1000);
+        addEventListener('orientationchange', update);
+
         update();
     </script>
 </body>
