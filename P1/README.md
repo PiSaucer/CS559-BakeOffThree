@@ -2,6 +2,23 @@
 
 The original Processing sketch, `P1.pde`, has been modified for compatibility with both the Processing IDE (Java mode) and Processing.js in a web browser using `index.html`.
 
+## Screenshots
+
+<details markdown="1">
+
+<summary><strong>Processing IDE (Java Mode)</strong></summary>
+
+![Processing IDE](../screenshots/P1-app.png)
+
+</details>
+
+<details markdown="1">
+<summary><strong>Web Browser (Processing.js)</strong></summary>
+
+![Processing.js Web Browser](../screenshots/P1-web.png)
+
+</details>
+
 ## Processing IDE (Java Mode)
 
 1. Download and install the [Processing IDE](https://processing.org/download).
