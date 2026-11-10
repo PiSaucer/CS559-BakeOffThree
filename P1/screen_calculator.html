@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Screen Calculator</title>
+    <style>
+        body {
+            font: 16px system-ui, sans-serif;
+            margin: 2rem;
+        }
+
+        #square {
+            width: 1in;
+            height: 1in;
+            border: 1px solid #2563eb;
+            box-sizing: border-box;
+            background: #dbeafe;
+            display: grid;
+            place-items: center;
+            margin: 1rem 0;
+        }
+
+        small {
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Screen Calculator</h2>
+    <p id="info"></p>
+    <div id="square">1 x 1 in</div>
+    <small>Square uses CSS inches (1in = 96 CSS px), not guaranteed physical inches. Estimated DPI is not the monitor's
+        measured PPI.</small>
+    <script>
+        function update() {
+            const dpr = window.devicePixelRatio || 1;
+            document.getElementById('info').innerHTML =
+                `Screen: ${screen.width} x ${screen.height} CSS px<br>` +
+                `Viewport: ${innerWidth} x ${innerHeight} CSS px<br>` +
+                `Device pixel ratio: ${dpr.toFixed(2)}<br>` +
+                `Estimated device pixels/in: ${(96 * dpr).toFixed(1)} (not physical PPI)`;
+        }
+        addEventListener('resize', update);
+        setInterval(update, 1000);
+        update();
+    </script>
+</body>
+
+</html>
