@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLTest</title>
+
+    <script src="./processing.min.js"></script>
+    <!-- Letter inference runs inside MLTest.pde in both Java and JavaScript modes. -->
+    <script>
+        Processing.logger.println = function (...args) {
+            console.log(...args);
+        };
+        Processing.logger.print = function (...args) {
+            console.log(...args);
+        };
+    </script>
+
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: white;
+        }
+
+        canvas {
+            display: block;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="p1-canvas" data-processing-sources="./MLTest.pde?v=29">
+    </canvas>
+
+    <script>
+        const canvas = document.getElementById("p1-canvas");
+
+        let activeTouchId = null;
+        let pressStarted = 0;
+        let releaseTimer = null;
+        let lastTouch = null;
+
+        // Send an ordinary mouse event to Processing.js.
+        // This preserves the original PDE behavior.
+        function sendMouse(type, touch) {
+            canvas.dispatchEvent(new MouseEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                button: 0,
+                buttons: type === "mouseup" ? 0 : 1
+            }));
+        }
+
+        function releaseTouch() {
+            if (activeTouchId === null) return;
+
+            if (releaseTimer !== null) {
+                clearTimeout(releaseTimer);
+                releaseTimer = null;
+            }
+
+            sendMouse("mouseup", lastTouch);
+            activeTouchId = null;
+            lastTouch = null;
+        }
+
+        canvas.addEventListener("touchstart", function (e) {
+            // Prevent Processing.js from independently
+            // handling this same touch.
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            if (e.touches.length !== 1) return;
+
+            // Complete any pending release.
+            if (activeTouchId !== null) {
+                releaseTouch();
+            }
+
+            const touch = e.changedTouches[0];
+
+            activeTouchId = touch.identifier;
+            pressStarted = performance.now();
+
+            lastTouch = {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            };
+
+            // Processing.js updates mouseX/mouseY on
+            // mousemove, so send it before mousedown.
+            sendMouse("mousemove", lastTouch);
+            sendMouse("mousedown", lastTouch);
+
+        }, { passive: false, capture: true });
+
+        canvas.addEventListener("touchmove", function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            // NEW: handwriting needs move events, not just start/end taps.
+            // Keep the original touch-to-mouse scaffolding and tracked touch ID.
+            const touch = Array.from(e.changedTouches)
+                .find(t => t.identifier === activeTouchId);
+            if (touch) {
+                lastTouch = { clientX: touch.clientX, clientY: touch.clientY };
+                sendMouse("mousemove", lastTouch);
+            }
+        }, { passive: false, capture: true });
+
+        function endTouch(e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            if (activeTouchId === null) return;
+
+            const touch = Array.from(e.changedTouches)
+                .find(t => t.identifier === activeTouchId);
+            if (!touch) return;
+
+            // NEW: finish the stroke at the real release coordinates.
+            lastTouch = { clientX: touch.clientX, clientY: touch.clientY };
+            sendMouse("mousemove", lastTouch);
+
+            // Keep the press active long enough for
+            // draw() to detect the first start tap.
+            const elapsed = performance.now() - pressStarted;
+            const remaining = Math.max(0, 50 - elapsed);
+
+            releaseTimer = setTimeout(releaseTouch, remaining);
+        }
+
+        canvas.addEventListener("touchend", endTouch, {
+            passive: false,
+            capture: true
+        });
+
+        canvas.addEventListener("touchcancel", endTouch, {
+            passive: false,
+            capture: true
+        });
+
+    </script>
+</body>
+
+</html>
