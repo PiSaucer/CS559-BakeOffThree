@@ -7,21 +7,28 @@ The only substantial replacement is the original scrolling alphabet picker. It i
 ## Files
 
 ```text
-MLTest/                      <-- Sketch folder must be named MLTest
-├── MLTest.pde               # All drawing, Java + web inference and scoring
-├── index.html               # Original web scaffold, with touch-drag forwarding
-├── processing.min.js        # COPY from your original web project (not bundled)
+MLTest/                       <-- Sketch folder must be named MLTest
+├── MLTest.pde                # All drawing, Java + web inference and scoring
+├── index.html                # Original web scaffold, with touch-drag forwarding
+├── processing.min.js         # Processing.js runtime
 ├── data/
-│   ├── letter_model.txt     # Bundled, locally trained CNN weights (required)
-│   ├── phrases2.txt         # DEMO phrases; replace with instructor's actual data
-│   └── watchhand3smaller.png # TRANSPARENT PLACEHOLDER; replace with original image
+│   ├── letter_model.txt      # Trained CNN weights (required)
+│   ├── phrases2.txt          # Phrase set for trials
+│   └── watchhand3smaller.png # Watch background image
 └── tools/
-    ├── train_model.py       # Optional: rebuild the model (requires Python/PyTorch)
-    ├── check_java_syntax.py # API-stub Java syntax check, not Processing IDE
-    └── smoke_test.py        # API-stub Java inference/handwriting test
+    ├── train_model.py        # Train CNN using EMNIST Letters and local fonts
+    ├── download_emnist.py    # Download and verify EMNIST Letters
+    ├── emnist/               # Downloaded EMNIST dataset (created automatically)
+    └── training-fonts/       # Local TTF/OTF fonts, organized into subfolders
+        ├── Alan/
+        ├── arimo/
+        ├── caladea/
+        ├── carlito/
+        ├── comicneue/
+        └── ...
 ```
 
-**Important:** The original `processing.min.js`, watch image, and phrase file were not supplied. The included phrase file is **only a test sample**, and the transparent watch image is **only a placeholder** so the browser's `@pjs preload` can resolve. **Replace both with your instructor's files for the real bakeoff.** Also copy `processing.min.js` from your existing website into the sketch folder.
+**Important:** Keep `processing.min.js`, `phrases2.txt`, and `watchhand3smaller.png` in their existing locations. The trained `letter_model.txt` file must be present in `data/` for handwriting recognition to work.
 
 ## Run in Java Mode (desktop)
 
@@ -31,7 +38,7 @@ MLTest/                      <-- Sketch folder must be named MLTest
 
 ## Run in a browser (Processing.js)
 
-1. Keep the provided `index.html` and add your existing `processing.min.js` to the same folder.
+1. Keep the provided `index.html` and `processing.min.js` in the same folder.
 2. Serve the `MLTest` directory, e.g. `python3 -m http.server 8000`.
 3. Open **`http://localhost:8000/`**.
 
@@ -48,23 +55,59 @@ Do not load directly via `file://`: browsers can block the resource fetches used
 
 ## How the ML works
 
-- A **real 26-class convolutional neural network** is trained *offline* on randomly transformed glyphs from locally installed computer fonts.
-- The resulting ~247 KB `data/letter_model.txt` contains its actual trained weights, not a handcrafted alphabet lookup.
-- Both Processing modes load those weights and run the **same** two 3×3 convolution/2×2 max-pool stages and 26-way fully connected/softmax output in the PDE.
-- Input strokes are normalized and rasterized to 28×28 grayscale in plain Processing. The three most probable letters are ranked on the screen.
-- There is no word-level correction or prediction: the selected letters are preserved as entered.
+* A **real 26-class convolutional neural network** is trained *offline* using [EMNIST Letters](https://www.nist.gov/itl/products-and-services/emnist-dataset) handwritten characters and randomly transformed glyphs from local computer fonts.
+* The resulting `data/letter_model.txt` contains its actual trained weights, not a handcrafted alphabet lookup.
+* Both Processing modes load those weights and run the **same** two 3×3 convolution/2×2 max-pool stages and 26-way fully connected/softmax output in the PDE.
+* Input strokes are normalized and rasterized to 28×28 grayscale in plain Processing. The three most probable letters are ranked on the screen.
+* There is no word-level correction or prediction: the selected letters are preserved as entered.
 
-**Accuracy limitation:** Training used synthetic *font* glyphs, **not handwritten EMNIST samples**. A holdout of similar generated glyphs achieved ~89% accuracy, which does **not** predict accuracy with real handwritten letters. The softmax percentages are model scores, not calibrated real-world confidence. Test with actual users, and retrain on [EMNIST Letters](https://www.nist.gov/itl/products-and-services/emnist-dataset) if higher handwriting accuracy is needed. The architecture allows retraining without changing either runtime's inference logic.
+**Accuracy limitation:** Although EMNIST Letters provides real handwritten samples, performance on the dataset does not guarantee accuracy with actual users drawing on the one-inch input area. The softmax percentages are model scores, not calibrated real-world confidence. Test with actual users to evaluate recognition accuracy.
 
-`tools/train_model.py` is optional: it reproduces a synthetically-trained model from locally installed Latin fonts, using `torch`, `Pillow`, and `numpy`. These dependencies are *not* needed to run the delivered PDE.
+**Note:** Existing `letter_model.txt` weights remain font-only until the model is retrained using EMNIST.
+
+## Training the model (optional)
+
+Model training uses Python with `torch`, `Pillow`, and `numpy`. These dependencies are **not** needed to run the delivered PDE.
+
+First, download EMNIST Letters:
+
+```bash
+python3 tools/download_emnist.py
+```
+
+This downloads and verifies the dataset in `tools/emnist/`. The download only needs to be completed once.
+
+Then train using **both EMNIST Letters and the fonts in `tools/training-fonts/`**:
+
+```bash
+python3 tools/train_model.py \
+    --dataset both \
+    --epochs 30 \
+    --batch-size 128 \
+    --learning-rate 0.001 \
+    --font-fraction 0.25 \
+    --patience 6 \
+    --device mps
+```
+
+The `--font-fraction 0.25` option allocates approximately 25% of training samples per epoch to synthetic fonts and 75% to EMNIST handwriting. Training runs locally without downloading additional data.
+
+The trained model is exported to `data/letter_model.txt`, replacing the previous weights.
+
+To train with only one dataset, use `--dataset fonts` or `--dataset emnist`.
 
 ## Validation and limitations
 
-- Java syntax/type checking against stub Processing API methods: **passed**.
-- Compiled and executed the **actual Java CNN inference** and handwriting methods in a minimal Java test harness: **passed** (the model returned ranked predictions for a hand-coded V-shaped stroke).
-- The original course scoring equations and evaluation flow remain unchanged; two decimal constants were suffixed with `f` for strict Java float compilation.
-- **Not yet verified with the actual Processing IDE or Processing.js in a browser** because the Processing runtime files were not among the provided assets. Verify both locally before the actual class bakeoff.
+* Java syntax/type checking against stub Processing API methods: **passed**.
+* Compiled and executed the **actual Java CNN inference** and handwriting methods in a minimal Java test harness: **passed** (the model returned ranked predictions for a hand-coded V-shaped stroke).
+* EMNIST loading, label conversion, dataset splitting, and combined training/export passed offline tests using synthetic fixtures.
+* The original course scoring equations and evaluation flow remain unchanged; two decimal constants were suffixed with `f` for strict Java float compilation.
+* **Full EMNIST training on the actual dataset and end-to-end testing in both Processing runtimes still require verification.**
 
 ## Upstream data attribution
 
-The ML weights were trained for this example on computer-font glyphs and should not be represented as an EMNIST-trained model. EMNIST is a useful possible future training source: Cohen et al., *EMNIST: An Extension of MNIST to Handwritten Letters* (2017).
+[EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset) is an extension of MNIST containing handwritten character images derived from the NIST Special Database 19.
+
+Cohen, G., Afshar, S., Tapson, J., & van Schaik, A. (2017). *EMNIST: An Extension of MNIST to Handwritten Letters*.
+
+The training pipeline combines EMNIST Letters with locally stored font-generated samples. The exported model remains compatible with both Processing Java Mode and Processing.js.
