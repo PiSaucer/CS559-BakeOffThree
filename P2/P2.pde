@@ -20,7 +20,7 @@ final float sizeOfInputArea = DPIofYourDeviceScreen * 1.0f; //aka, 1.0 inches sq
 PImage watch;
 PImage finger;
 
-// Variables for 4 letter grouping
+// 4 letter grouping 
 String alphabet = "abcdefghijklmnopqrstuvwxyz";
 int currentPage = 0; // index of the 4-letter group (0 to 6)
 final int lettersPerPage = 4;
@@ -115,74 +115,34 @@ void draw()
     fill(255);
     text("NEXT > ", 650, 650); //draw next label
 
-    // Determine next expected character and guidance state ---
-    String nextExpectedChar = "";
-    int targetPage = -1;
-    boolean highlightLeft = false;
-    boolean highlightRight = false;
-    boolean highlightSpace = false;
-
-    if (currentTyped.length() < currentPhrase.length()) {
-      nextExpectedChar = currentPhrase.substring(currentTyped.length(), currentTyped.length() + 1).toLowerCase();
-      if (nextExpectedChar.equals(" ")) {
-        highlightSpace = true;
-      } else {
-        int targetCharIdx = alphabet.indexOf(nextExpectedChar);
-        if (targetCharIdx != -1) {
-          targetPage = targetCharIdx / lettersPerPage;
-          if (targetPage != currentPage) {
-            // Calculate shortest wrap-around direction across pages
-            int forwardDist = (targetPage - currentPage + totalPages) % totalPages;
-            int backwardDist = (currentPage - targetPage + totalPages) % totalPages;
-            if (backwardDist <= forwardDist) {
-              highlightLeft = true;
-            } else {
-              highlightRight = true;
-            }
-          }
-        }
-      }
-    }
-
     //example design draw code - arrows, letters, delete and space in the 1" area
     float x = width/2;
     float y = height/2;
     fill(0);
     rect(x-sizeOfInputArea/2, y-sizeOfInputArea/2, sizeOfInputArea, sizeOfInputArea); //keep the 1" input area black
+    fill(255);
     textAlign(CENTER, CENTER);
     textSize(12);
-    fill(255);
     text("DELETE", x, y-sizeOfInputArea*0.40); //delete previous character
-
-    // Highlight SPACE in green if the next expected character is a space
-    if (highlightSpace) fill(0, 255, 0);
-    else fill(255);
     text("SPACE", x, y+sizeOfInputArea*0.40); //enter a space
 
-    // Arrows with directional highlighting
-    strokeWeight(3); // smaller stroke weight (was 5)
+    //draw bold arrows using lines rather than font glyphs for consistent appearance
+    stroke(255);
+    strokeWeight(5);
     strokeCap(ROUND);
     strokeJoin(ROUND);
     float arrowY = y;
-    float leftX = x - sizeOfInputArea * 0.36f;
-    float rightX = x + sizeOfInputArea * 0.36f;
-
-    // Draw Left Arrow
-    if (highlightLeft) stroke(0, 255, 0);
-    else stroke(255);
-    line(leftX + 7, arrowY, leftX - 7, arrowY);       // smaller left arrow shaft
-    line(leftX - 7, arrowY, leftX - 1, arrowY - 6);   // smaller left arrow upper head
-    line(leftX - 7, arrowY, leftX - 1, arrowY + 6);   // smaller left arrow lower head
-
-    // Draw Right Arrow
-    if (highlightRight) stroke(0, 255, 0);
-    else stroke(255);
-    line(rightX - 7, arrowY, rightX + 7, arrowY);     // smaller right arrow shaft
-    line(rightX + 7, arrowY, rightX + 1, arrowY - 6); // smaller right arrow upper head
-    line(rightX + 7, arrowY, rightX + 1, arrowY + 6); // smaller right arrow lower head
+    float leftX = x-sizeOfInputArea*0.34;
+    float rightX = x+sizeOfInputArea*0.34;
+    line(leftX+12, arrowY, leftX-12, arrowY); //left arrow shaft
+    line(leftX-12, arrowY, leftX-3, arrowY-10); //left arrow upper head
+    line(leftX-12, arrowY, leftX-3, arrowY+10); //left arrow lower head
+    line(rightX-12, arrowY, rightX+12, arrowY); //right arrow shaft
+    line(rightX+12, arrowY, rightX+3, arrowY-10); //right arrow upper head
+    line(rightX+12, arrowY, rightX+3, arrowY+10); //right arrow lower head
     noStroke(); //restore original drawing style
 
-    // Draw 2 by 2 grid for 4 letters
+    // --- NEW CODE: Draw 2x2 grid of 4 letters in the center area ---
     float gridX = x - sizeOfInputArea / 6.0f;
     float gridY = y - (sizeOfInputArea * 3.0f / 10.0f);
     float gridW = sizeOfInputArea / 3.0f;
@@ -190,13 +150,14 @@ void draw()
     float cellW = gridW / 2.0f;
     float cellH = gridH / 2.0f;
 
-    // Subtle divider lines for the 2 by 2 letter grid
+    // Subtle divider lines for the 2x2 letter grid
     stroke(80);
     strokeWeight(1);
     line(gridX + cellW, gridY, gridX + cellW, gridY + gridH);
     line(gridX, gridY + cellH, gridX + gridW, gridY + cellH);
     noStroke();
 
+    fill(255);
     textSize(22);
     int startIdx = currentPage * lettersPerPage;
     for (int i = 0; i < lettersPerPage; i++) {
@@ -206,15 +167,7 @@ void draw()
         int row = i / 2;
         float cx = gridX + col * cellW + cellW / 2.0f;
         float cy = gridY + row * cellH + cellH / 2.0f;
-        String letter = alphabet.substring(charIdx, charIdx + 1);
-
-        // --- NEW CODE: Highlight target letter in green when on its page ---
-        if (letter.equals(nextExpectedChar)) {
-          fill(0, 255, 0);
-        } else {
-          fill(255);
-        }
-        text(letter, cx, cy - 2);
+        text(alphabet.substring(charIdx, charIdx + 1), cx, cy - 2);
       }
     }
     textSize(20); //restore the original font size
@@ -249,7 +202,7 @@ void mousePressed()
   }
   else if (didMouseClick(x+sizeOfInputArea/3, y+fifth, sizeOfInputArea/3, fifth*3)) //check if click occurred in 2x2 letter area
   {
-    // Check which of the 4 cells was clicked
+    // --- NEW CODE: Check which of the 4 cells was clicked ---
     float gridX = x + sizeOfInputArea / 3.0f;
     float gridY = y + fifth;
     float cellW = (sizeOfInputArea / 3.0f) / 2.0f;
