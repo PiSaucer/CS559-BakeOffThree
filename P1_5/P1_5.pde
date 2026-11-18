@@ -23,8 +23,8 @@ PImage finger;
 // 4 letter grouping 
 String alphabet = "abcdefghijklmnopqrstuvwxyz";
 int currentPage = 0; // index of the 4-letter group (0 to 6)
-final int lettersPerPage = 4;
-final int totalPages = 7; // 26 letters grouped by 4 gives 7 pages
+final int lettersPerPage = 13;
+final int totalPages = 2; // 26 letters grouped by 4 gives 7 pages
 
 // Added for JavaScript compatibility, since Collections.shuffle() is not available in JS mode
 void shufflePhrases() {
