@@ -321,7 +321,7 @@ void acceptCandidate(int which)
 void loadLetterModel()
 {
   String[] lines = loadStrings("data/letter_model.txt");
-  if (lines == null || lines.length < 2 || !lines[0].equals("ML-CNN-1")) {
+  if (lines == null || lines.length < 2 || !lines[0].equals("MLTEST-CNN-1")) {
     modelStatus = "Missing data/letter_model.txt";
     return;
   }

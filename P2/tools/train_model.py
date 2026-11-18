@@ -1,270 +1,307 @@
 #!/usr/bin/env python3
 # train_model.py
-# Train the Processing-compatible ML CNN on downloaded EMNIST Letters and local fonts.
+
 import argparse
-import gzip
+import copy
 import random
-import struct
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
-from torch import nn
-from torch.nn import functional as F
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import torch.nn as nn
+import torch.nn.functional as F
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-KEYS = ('c1.weight', 'c1.bias', 'c2.weight', 'c2.bias', 'fc.weight', 'fc.bias')
+MODEL_KEYS = ("c1.weight", "c1.bias", "c2.weight", "c2.bias", "fc.weight", "fc.bias")
 
-def arguments():
-    p = argparse.ArgumentParser(description='Train ML CNN on local EMNIST Letters and fonts; export ML-CNN-1 weights.',
-                                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    p.add_argument('--dataset', choices=('both', 'emnist', 'fonts'), default='both')
-    p.add_argument('--fonts-dir', type=Path, default=ROOT/'tools'/'training-fonts')
-    p.add_argument('--font-limit', type=int, default=0, help='0 means all fonts')
-    p.add_argument('--samples-per-case', type=int, default=8)
-    p.add_argument('--validation-fraction', type=float, default=.2, help='Held-out fonts')
-    p.add_argument('--emnist-dir', type=Path, default=ROOT/'tools'/'emnist')
-    p.add_argument('--emnist-validation-fraction', type=float, default=.1)
-    p.add_argument('--emnist-limit', type=int, default=0, help='0 uses all handwriting samples; for quick smoke tests')
-    p.add_argument('--font-fraction', type=float, default=.25, help='Fraction of training batch indices from fonts')
-    p.add_argument('--epochs', type=int, default=12)
-    p.add_argument('--batch-size', type=int, default=256)
-    p.add_argument('--learning-rate', type=float, default=.003)
-    p.add_argument('--weight-decay', type=float, default=.0001)
-    p.add_argument('--patience', type=int, default=0)
-    p.add_argument('--seed', type=int, default=42)
-    p.add_argument('--threads', type=int, default=4)
-    p.add_argument('--device', choices=('auto', 'cpu', 'cuda', 'mps'), default='auto')
-    p.add_argument('--output', type=Path, default=ROOT/'data'/'letter_model.txt')
-    a = p.parse_args()
-    for k in ('epochs', 'batch_size', 'samples_per_case', 'threads'):
-        if getattr(a, k) < 1: p.error(f'--{k.replace("_", "-")} must be positive')
-    if a.font_limit < 0 or a.patience < 0 or (a.emnist_limit and a.emnist_limit < 26):
-        p.error('limits/patience must be nonnegative and --emnist-limit must be 0 or >=26')
-    if not all(0 < v < 1 for v in (a.validation_fraction, a.emnist_validation_fraction, a.font_fraction)):
-        p.error('validation and font fractions must be strictly between 0 and 1')
-    if a.learning_rate <= 0 or a.weight_decay < 0: p.error('invalid optimizer settings')
-    return a
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Train and export a font-based letter recognition CNN for MLTest.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    data = parser.add_argument_group("training data")
+    data.add_argument("--fonts-dir", type=Path,
+                      default=ROOT / "tools" / "training-fonts", metavar="DIR",
+                      help="Recursively search this folder for .ttf and .otf font files, "
+                           "including fonts in subfolders such as Alan/ and lato/.")
+    data.add_argument("--font-limit", type=int, default=0, metavar="N",
+                      help="Maximum number of font files to use (0 uses all files).")
+    data.add_argument("--samples-per-case", type=int, default=8, metavar="N",
+                      help="Augmented samples for each upper/lowercase letter per font.")
+    data.add_argument("--validation-fraction", type=float, default=0.2, metavar="F",
+                      help="Fraction of font files reserved for validation.")
 
-def require_local_emnist(directory: Path) -> Path:
-    """Never download data while training; use download_emnist.py first."""
-    directory = directory.expanduser().resolve()
-    names = [f'emnist-letters-{split}-{kind}-idx{3 if kind == "images" else 1}-ubyte.gz'
-             for split in ('train', 'test') for kind in ('images', 'labels')]
-    missing = [name for name in names if not (directory/name).is_file()]
-    if missing:
-        raise ValueError(
-            f'EMNIST files missing from {directory}: {", ".join(missing)}\n'
-            'Run python tools/download_emnist.py first. Training does not download datasets.'
-        )
-    return directory
+    train = parser.add_argument_group("training")
+    train.add_argument("--epochs", type=int, default=12, help="Number of training epochs.")
+    train.add_argument("--batch-size", type=int, default=256, help="Batch size for training.")
+    train.add_argument("--learning-rate", type=float, default=0.003, help="Initial learning rate.")
+    train.add_argument("--weight-decay", type=float, default=0.0001, help="L2 regularization strength.")
+    train.add_argument("--patience", type=int, default=0,
+                       help="Early-stop after this many epochs without improvement (0 disables).")
+    train.add_argument("--seed", type=int, default=42,
+                       help="Random seed for reproducible results.")
+    train.add_argument("--threads", type=int, default=4,
+                       help="Number of CPU threads used by PyTorch.")
+    train.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"),
+                       default="auto", help="Training device; auto prefers CUDA/MPS when available.")
 
-def emnist_partition(directory, split):
-    base = directory / f'emnist-letters-{split}-'
-    image_path = Path(str(base)+'images-idx3-ubyte.gz')
-    label_path = Path(str(base)+'labels-idx1-ubyte.gz')
-    with gzip.open(image_path, 'rb') as f:
-        head = f.read(16)
-        if len(head)!=16: raise ValueError('Invalid image IDX header')
-        magic,n,h,w = struct.unpack('>IIII', head)
-        if magic != 2051 or (h,w)!=(28,28): raise ValueError('Unexpected IDX image shape')
-        buf = f.read()
-    if len(buf)!=n*784: raise ValueError('Invalid image IDX byte count')
-    with gzip.open(label_path, 'rb') as f:
-        head = f.read(8)
-        if len(head)!=8: raise ValueError('Invalid label IDX header')
-        lm, count=struct.unpack('>II',head)
-        labels = np.frombuffer(f.read(),dtype=np.uint8)
-    if lm!=2049 or count!=n or len(labels)!=n or not np.all((labels>=1)&(labels<=26)):
-        raise ValueError('Invalid EMNIST Letters labels (expected 1-26)')
-    # NIST pixels are stored transposed. Processing writes upright images.
-    images = np.frombuffer(buf,dtype=np.uint8).reshape(n,28,28).transpose(0,2,1).copy()
-    return torch.from_numpy(images[:,None]), torch.from_numpy((labels.astype(np.int64)-1).copy())
+    output = parser.add_argument_group("output")
+    output.add_argument("--output", type=Path,
+                        default=ROOT / "data" / "letter_model.txt",
+                        help="Destination text file read with Processing loadStrings().")
+    args = parser.parse_args()
 
-def split_emnist(x, y, val_fraction, seed, limit=0):
-    rng=np.random.default_rng(seed); labels=y.numpy(); train=[]; valid=[]
-    for cls in range(26):
-        ids=np.flatnonzero(labels==cls)
-        if len(ids)<2: raise ValueError(f'Not enough examples of class {cls}')
-        rng.shuffle(ids)
-        n=max(1,min(len(ids)-1,round(len(ids)*val_fraction)))
-        valid.extend(ids[:n]); train.extend(ids[n:])
-    if limit and limit<len(train):
-        pool=np.asarray(train); selected=[]; each,extra=divmod(limit,26)
-        for cls in range(26): selected.extend(pool[labels[pool]==cls][:each+(cls<extra)])
-        train=selected
-    rng.shuffle(train);rng.shuffle(valid)
-    return x[train],y[train],x[valid],y[valid]
+    for name in ("epochs", "batch_size", "samples_per_case", "threads"):
+        if getattr(args, name) < 1:
+            parser.error(f"--{name.replace('_', '-')} must be at least 1")
+    if args.font_limit < 0 or args.patience < 0:
+        parser.error("--font-limit and --patience cannot be negative")
+    if not 0 < args.validation_fraction < 1:
+        parser.error("--validation-fraction must be between 0 and 1 (exclusive)")
+    if args.learning_rate <= 0 or args.weight_decay < 0:
+        parser.error("--learning-rate must be positive and --weight-decay nonnegative")
+    return args
 
-def available_fonts(directory, limit, rng):
-    directory=directory.expanduser().resolve()
-    if not directory.is_dir(): raise ValueError(f'Fonts folder not found: {directory}. Use --dataset emnist instead.')
-    paths=sorted((f for f in directory.rglob('*') if f.is_file() and f.suffix.lower() in ('.ttf','.otf')),
-                 key=lambda f:str(f).lower())
-    fonts=[]
-    for f in paths:
+def find_fonts(fonts_dir: Path, limit: int, rng: random.Random) -> list[Path]:
+    """Load font files exclusively from the local training-fonts directory.
+
+    Subfolders such as Alan/, arimo/, and lato/ are scanned recursively.
+    README files and OFL.txt files are ignored. No system font discovery or
+    downloads take place.
+    """
+    fonts_dir = fonts_dir.expanduser().resolve()
+    if not fonts_dir.is_dir():
+        raise ValueError("Fonts directory not found: {fonts_dir}\nPlace your .ttf files in tools/training-fonts/ or specify --fonts-dir.")
+
+    paths = sorted(
+        (p for p in fonts_dir.rglob("*")
+         if p.is_file() and p.suffix.lower() in (".ttf", ".otf")),
+        key=lambda p: str(p).lower(),
+    )
+    if not paths:
+        raise ValueError(f"No .ttf or .otf files found under {fonts_dir}")
+
+    # Remove unreadable fonts while keeping every usable font, including Alan.
+    usable = []
+    for path in paths:
         try:
-            if ImageFont.truetype(str(f),64).getbbox('Agz') is not None: fonts.append(f)
-        except (ValueError,OSError) as exc: print(f'Skipping {f}: {exc}')
-    rng.shuffle(fonts)
-    if limit: fonts=fonts[:limit]
-    if len(fonts)<2: raise ValueError('Need at least two readable font files for held-out font validation')
-    return fonts
+            font = ImageFont.truetype(str(path), 64)
+            if font.getbbox("Agz") is not None:
+                usable.append(path)
+            else:
+                print(f"Skipping font with no Latin glyphs: {path.name}", flush=True)
+        except (OSError, ValueError) as exc:
+            print(f"Skipping unreadable font {path}: {exc}", flush=True)
 
-def glyph(letter, font_path, rng):
-    font=ImageFont.truetype(str(font_path),rng.randint(56,85))
-    img=Image.new('L',(160,160),0)
-    draw=ImageDraw.Draw(img)
-    box=draw.textbbox((0,0),letter,font=font)
-    draw.text((12-box[0],12-box[1]),letter,font=font,fill=255)
-    crop=img.getbbox()
-    if crop is None: raise ValueError(f'Blank font glyph {font_path}: {letter}')
-    img=img.crop(crop); w,h=img.size; scale=max(w,h)
-    neww=max(2,round(w/scale*rng.randint(17,23)*rng.uniform(.85,1.12)))
-    newh=max(2,round(h/scale*rng.randint(17,23)*rng.uniform(.90,1.13)))
-    img=img.resize((min(25,neww),min(25,newh)),Image.Resampling.BILINEAR)
-    if rng.random()<.2: img=img.filter(ImageFilter.MaxFilter(3))
-    if rng.random()<.1 and min(img.size)>=3:
-        eroded=img.filter(ImageFilter.MinFilter(3))
-        before=np.count_nonzero(np.asarray(img)>16); after=np.count_nonzero(np.asarray(eroded)>16)
-        if after>=max(4,round(before*.2)): img=eroded
-    canvas=Image.new('L',(44,44),0)
-    canvas.paste(img,((44-img.width)//2,(44-img.height)//2))
-    rotated=canvas.rotate(rng.uniform(-14,14),resample=Image.Resampling.BILINEAR)
-    if rotated.getbbox(): canvas=rotated
-    crop=canvas.getbbox()
-    if crop is None: raise ValueError(f'Blank augmented glyph {font_path}: {letter}')
-    canvas=canvas.crop(crop)
-    if max(canvas.size)>24:
-        s=24/max(canvas.size)
-        canvas=canvas.resize((max(1,round(canvas.width*s)),max(1,round(canvas.height*s))),Image.Resampling.BILINEAR)
-    out=Image.new('L',(28,28),0)
-    out.paste(canvas,((28-canvas.width)//2+rng.randint(-2,2),(28-canvas.height)//2+rng.randint(-2,2)))
-    if not out.getbbox(): raise ValueError(f'Blank final glyph {font_path}: {letter}')
-    return np.asarray(out,dtype=np.uint8)
+    if limit:
+        rng.shuffle(usable)
+        usable = usable[:limit]
+    if len(usable) < 2:
+        raise ValueError(f"At least two valid font files are needed; found {len(usable)}")
+    return usable
 
-def font_dataset(fonts, count, seed):
-    rng=random.Random(seed); images=[];labels=[]
+def render_glyph(letter: str, font_path: Path, rng: random.Random) -> np.ndarray:
+    """Create a 28x28 single-channel glyph with mild geometric augmentation."""
+    font = ImageFont.truetype(str(font_path), rng.randint(56, 85))
+    img = Image.new("L", (160, 160), 0)
+    draw = ImageDraw.Draw(img)
+    bbox = draw.textbbox((0, 0), letter, font=font)
+    # Offset by the measured bbox so descenders and font bearings aren't clipped.
+    draw.text((12 - bbox[0], 12 - bbox[1]), letter, font=font, fill=255)
+    box = img.getbbox()
+    if box is None:
+        raise ValueError(f"Font {font_path.name} rendered a blank glyph: {letter!r}")
+    img = img.crop(box)
+
+    w, h = img.size
+    s = max(w, h)
+    new_w = max(2, round(w / s * rng.randint(17, 23) * rng.uniform(0.85, 1.12)))
+    new_h = max(2, round(h / s * rng.randint(17, 23) * rng.uniform(0.90, 1.13)))
+    img = img.resize((min(25, new_w), min(25, new_h)), Image.Resampling.BILINEAR)
+
+    if rng.random() < 0.20:
+        img = img.filter(ImageFilter.MaxFilter(3))
+    if rng.random() < 0.10 and min(img.size) >= 3:
+        # MinFilter erodes white strokes against a black background. Narrow
+        # letters such as i, l, I, and j can disappear entirely at 28 px.
+        # Keep the original instead of introducing a blank, mislabeled sample.
+        eroded = img.filter(ImageFilter.MinFilter(3))
+        ink_before = np.count_nonzero(np.asarray(img) > 16)
+        ink_after = np.count_nonzero(np.asarray(eroded) > 16)
+        if ink_after >= max(4, round(ink_before * 0.20)):
+            img = eroded
+
+    padded = Image.new("L", (44, 44), 0)
+    padded.paste(img, ((44 - img.width) // 2, (44 - img.height) // 2))
+    # Keep an unrotated fallback: PIL may erase a very thin stroke when
+    # resampling a rotated glyph, especially with lightweight fonts.
+    rotated = padded.rotate(rng.uniform(-14, 14), resample=Image.Resampling.BILINEAR)
+    if rotated.getbbox() is not None:
+        padded = rotated
+    box = padded.getbbox()
+    if box is None:
+        # A truly missing glyph is a font-data problem, not a reason to
+        # silently train on a blank image with a letter label.
+        raise ValueError(f"Font {font_path.name} produced a blank {letter!r} after resizing")
+    padded = padded.crop(box)
+    max_dim = max(padded.size)
+    if max_dim > 24:
+        scale = 24 / max_dim
+        padded = padded.resize(
+            (max(1, round(padded.width * scale)),
+             max(1, round(padded.height * scale))),
+            Image.Resampling.BILINEAR,
+        )
+
+    out = Image.new("L", (28, 28), 0)
+    out.paste(padded, (
+        (28 - padded.width) // 2 + rng.randint(-2, 2),
+        (28 - padded.height) // 2 + rng.randint(-2, 2),
+    ))
+    return np.asarray(out, dtype=np.float32) / 255.0
+
+def make_dataset(font_paths: list[Path], samples_per_case: int, seed: int) -> tuple[torch.Tensor, torch.Tensor]:
+    rng = random.Random(seed)
+    images: list[np.ndarray] = []
+    labels: list[int] = []
     for cls in range(26):
-        for path in fonts:
-            for letter in (chr(65+cls),chr(97+cls)):
-                for _ in range(count): images.append(glyph(letter,path,rng));labels.append(cls)
-    return torch.from_numpy(np.stack(images)[:,None]),torch.tensor(labels,dtype=torch.long)
+        for path in font_paths:
+            for char in (chr(65 + cls), chr(97 + cls)):
+                for _ in range(samples_per_case):
+                    images.append(render_glyph(char, path, rng))
+                    labels.append(cls)
+    images_array = np.stack(images)[:, None, :, :]
+    return torch.from_numpy(images_array), torch.tensor(labels, dtype=torch.long)
 
 class Net(nn.Module):
-    '''Must match P2.pde and ML-CNN-1 weight order.'''
-    def __init__(self):
-        super().__init__()
-        self.c1=nn.Conv2d(1,8,3,padding=1)
-        self.c2=nn.Conv2d(8,16,3,padding=1)
-        self.fc=nn.Linear(16*7*7,26)
-    def forward(self,x):
-        x=F.max_pool2d(F.relu(self.c1(x)),2)
-        x=F.max_pool2d(F.relu(self.c2(x)),2)
-        return self.fc(x.reshape(x.size(0),-1))
+    """Architecture deliberately kept identical to the Processing PDE loader."""
 
-def device_for(name):
-    if name=='auto': name=('cuda' if torch.cuda.is_available() else
-                          'mps' if hasattr(torch.backends,'mps') and torch.backends.mps.is_available() else 'cpu')
-    if name=='cuda' and not torch.cuda.is_available(): raise ValueError('CUDA unavailable')
-    if name=='mps' and not (hasattr(torch.backends,'mps') and torch.backends.mps.is_available()):
-        raise ValueError('Apple MPS unavailable')
-    return torch.device(name)
+    def __init__(self) -> None:
+        super().__init__()
+        self.c1 = nn.Conv2d(1, 8, 3, padding=1)
+        self.c2 = nn.Conv2d(8, 16, 3, padding=1)
+        self.fc = nn.Linear(16 * 7 * 7, 26)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.max_pool2d(F.relu(self.c1(x)), 2)
+        x = F.max_pool2d(F.relu(self.c2(x)), 2)
+        return self.fc(x.reshape(x.size(0), -1))
+
+def choose_device(requested: str) -> torch.device:
+    if requested == "auto":
+        requested = ("cuda" if torch.cuda.is_available() else "mps" if hasattr(torch.backends, "mps")
+                     and torch.backends.mps.is_available() else "cpu")
+    if requested == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA requested but not available")
+    if requested == "mps" and not (hasattr(torch.backends, "mps")
+                                  and torch.backends.mps.is_available()):
+        raise ValueError("MPS requested but not available")
+    return torch.device(requested)
 
 @torch.inference_mode()
-def evaluate(net,x,y,bs,device):
-    net.eval(); loss=0;correct=0
-    for start in range(0,len(y),bs):
-        xb=x[start:start+bs].to(device=device,dtype=torch.float32)/255
-        yb=y[start:start+bs].to(device)
-        logits=net(xb)
-        loss+=F.cross_entropy(logits,yb,reduction='sum').item()
-        correct+=(logits.argmax(1)==yb).sum().item()
-    return loss/len(y),correct/len(y)
+def evaluate(model: Net, x: torch.Tensor, y: torch.Tensor, batch_size: int, device: torch.device) -> tuple[float, float]:
+    model.eval()
+    total_loss, total_correct = 0.0, 0
+    for i in range(0, len(y), batch_size):
+        xb = x[i:i + batch_size].to(device)
+        yb = y[i:i + batch_size].to(device)
+        logits = model(xb)
+        total_loss += F.cross_entropy(logits, yb, reduction="sum").item()
+        total_correct += (logits.argmax(dim=1) == yb).sum().item()
+    return total_loss / len(y), total_correct / len(y)
 
-def export_model(net,path):
-    path=path.expanduser().resolve();path.parent.mkdir(parents=True,exist_ok=True)
-    with path.open('w',encoding='utf-8',newline='\n') as out:
-        out.write('ML-CNN-1\n')
-        state=net.cpu().state_dict()
-        for key in KEYS:
-            values=state[key].detach().numpy().ravel()
-            for start in range(0,len(values),64):
-                out.write(' '.join(f'{float(v):.9g}' for v in values[start:start+64])+'\n')
-    print(f'Saved {path} ({path.stat().st_size:,} bytes)')
+def export_model(model: Net, path: Path) -> None:
+    path = path.expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # No metadata or extra lines: MLTest.pde expects this exact header/order.
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("MLTEST-CNN-1\n")
+        state = model.cpu().state_dict()
+        for key in MODEL_KEYS:
+            flat = state[key].detach().numpy().ravel()  # PyTorch native order
+            for start in range(0, len(flat), 64):
+                handle.write(" ".join(f"{float(v):.9g}" for v in flat[start:start + 64]) + "\n")
+    print(f"Saved {path} ({path.stat().st_size:,} bytes)")
 
-def main():
-    args=arguments();random.seed(args.seed);np.random.seed(args.seed);torch.manual_seed(args.seed)
+def main() -> None:
+    args = parse_args()
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     torch.set_num_threads(args.threads)
-    if torch.cuda.is_available(): torch.cuda.manual_seed_all(args.seed)
-    device=device_for(args.device)
-    print(f'Dataset: {args.dataset}; device: {device}; seed: {args.seed}',flush=True)
-    em_train=em_valid=em_test=fo_train=fo_valid=None
-    if args.dataset in ('both','emnist'):
-        directory=require_local_emnist(args.emnist_dir)
-        x,y=emnist_partition(directory,'train')
-        xet,yet,xev,yev=split_emnist(x,y,args.emnist_validation_fraction,args.seed,args.emnist_limit)
-        em_train=(xet,yet);em_valid=(xev,yev); em_test=emnist_partition(directory,'test')
-        print(f'EMNIST Letters: {len(yet):,} training, {len(yev):,} validation, '
-              f'{len(em_test[1]):,} official test; 0-based labels, upright pixels',flush=True)
-        del x,y
-    if args.dataset in ('both','fonts'):
-        rng=random.Random(args.seed); fonts=available_fonts(args.fonts_dir,args.font_limit,rng)
-        n=max(1,min(len(fonts)-1,round(len(fonts)*args.validation_fraction)))
-        train_fonts,valid_fonts=fonts[n:],fonts[:n]
-        fo_train=font_dataset(train_fonts,args.samples_per_case,args.seed+1)
-        fo_valid=font_dataset(valid_fonts,args.samples_per_case,args.seed+2)
-        print(f'Fonts: {len(train_fonts)} train / {len(valid_fonts)} held out; '
-              f'{len(fo_train[1]):,} train glyphs, {len(fo_valid[1]):,} valid glyphs',flush=True)
-    if args.dataset=='both':
-        xt=torch.cat((em_train[0],fo_train[0]));yt=torch.cat((em_train[1],fo_train[1]))
-        em_len=len(em_train[1]);font_draws=round(em_len*args.font_fraction/(1-args.font_fraction))
-        print(f'Each epoch: {em_len:,} EMNIST + {font_draws:,} sampled fonts',flush=True)
-    elif args.dataset=='emnist':xt,yt=em_train
-    else:xt,yt=fo_train
-    net=Net().to(device);opt=torch.optim.AdamW(net.parameters(),lr=args.learning_rate,weight_decay=args.weight_decay)
-    best_acc=-1.; best_loss=float('inf'); best_epoch=0;best_state=None;stale=0
-    for epoch in range(1,args.epochs+1):
-        start=time.perf_counter();net.train()
-        if args.dataset=='both':
-            ids=torch.cat((torch.randperm(em_len),torch.randint(len(fo_train[1]),(font_draws,))+em_len))
-            ids=ids[torch.randperm(len(ids))]
-        else:ids=torch.randperm(len(yt))
-        correct=0;total_loss=0
-        for batch in ids.split(args.batch_size):
-            xb=xt[batch].to(device=device,dtype=torch.float32)/255
-            yb=yt[batch].to(device)
-            opt.zero_grad(set_to_none=True)
-            scores=net(xb);loss=F.cross_entropy(scores,yb);loss.backward();opt.step()
-            correct+=(scores.argmax(1)==yb).sum().item();total_loss+=loss.item()*len(batch)
-        primary=em_valid if em_valid is not None else fo_valid
-        vl,va=evaluate(net,*primary,args.batch_size,device)
-        note=f'EMNIST validation={va:.1%}' if em_valid is not None else f'font validation={va:.1%}'
-        if fo_valid is not None and em_valid is not None:
-            _,fa=evaluate(net,*fo_valid,args.batch_size,device)
-            note+=f' | font validation={fa:.1%}'
-        improved=va>best_acc+1e-8 or (abs(va-best_acc)<=1e-8 and vl<best_loss)
-        if improved:
-            best_acc,best_loss,best_epoch=va,vl,epoch
-            best_state={k:v.detach().cpu().clone() for k,v in net.state_dict().items()}
-            stale=0
-        else:stale+=1
-        print(f'Epoch {epoch}/{args.epochs}: loss={total_loss/len(ids):.4f} '
-              f'train acc={correct/len(ids):.1%} | {note} | '
-              f'{time.perf_counter()-start:.1f}s'+(' *best' if improved else ''),flush=True)
-        if args.patience and stale>=args.patience:
-            print(f'Early stopping after {args.patience} unimproved epochs',flush=True);break
-    net.load_state_dict(best_state)
-    print(f'Best validation accuracy {best_acc:.1%} at epoch {best_epoch}',flush=True)
-    if em_test is not None:
-        tl,ta=evaluate(net,*em_test,args.batch_size,device)
-        print(f'Official EMNIST TEST (evaluated after selection): loss={tl:.4f}, accuracy={ta:.1%}',flush=True)
-    export_model(net,args.output)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
 
-if __name__=='__main__':
+    device = choose_device(args.device)
+    split_rng = random.Random(args.seed)
+    fonts = find_fonts(args.fonts_dir, args.font_limit, split_rng)
+    # Shuffle even when --font-limit=0 so validation is not biased toward
+    # alphabetically first directories (Alan, Arimo, Caladea, etc.).
+    split_rng.shuffle(fonts)
+    print(f"Fonts directory: {args.fonts_dir.expanduser().resolve()}", flush=True)
+    validation_count = max(1, min(len(fonts) - 1, round(len(fonts) * args.validation_fraction)))
+    valid_fonts, train_fonts = fonts[:validation_count], fonts[validation_count:]
+
+    print(f"Device: {device}; seed: {args.seed}", flush=True)
+    print(f"Fonts: {len(train_fonts)} train / {len(valid_fonts)} validation (different font files)", flush=True)
+    print("Validation fonts: " + ", ".join(p.name for p in valid_fonts), flush=True)
+    x_train, y_train = make_dataset(train_fonts, args.samples_per_case, args.seed + 1)
+    x_valid, y_valid = make_dataset(valid_fonts, args.samples_per_case, args.seed + 2)
+    print(f"Examples: {len(y_train):,} train / {len(y_valid):,} validation", flush=True)
+
+    model = Net().to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+
+    best_accuracy = -1.0
+    best_loss = float("inf")
+    best_epoch = 0
+    best_state = None
+    no_improvement = 0
+
+    for epoch in range(1, args.epochs + 1):
+        started = time.perf_counter()
+        model.train()
+        permutation = torch.randperm(len(y_train))
+        total_loss, correct = 0.0, 0
+        for ids in permutation.split(args.batch_size):
+            xb, yb = x_train[ids].to(device), y_train[ids].to(device)
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(xb)
+            loss = F.cross_entropy(logits, yb)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * len(ids)
+            correct += (logits.argmax(dim=1) == yb).sum().item()
+
+        val_loss, val_accuracy = evaluate(model, x_valid, y_valid, args.batch_size, device)
+        train_accuracy = correct / len(y_train)
+        improved = (val_accuracy > best_accuracy + 1e-8 or (abs(val_accuracy - best_accuracy) <= 1e-8 and val_loss < best_loss))
+        if improved:
+            best_accuracy, best_loss, best_epoch = val_accuracy, val_loss, epoch
+            best_state = copy.deepcopy({k: v.cpu() for k, v in model.state_dict().items()})
+            no_improvement = 0
+        else:
+            no_improvement += 1
+
+        print(f"Epoch {epoch:2}/{args.epochs}: "
+              f"train loss={total_loss / len(y_train):.4f} acc={train_accuracy:.1%} | "
+              f"valid loss={val_loss:.4f} acc={val_accuracy:.1%} | "
+              f"{time.perf_counter() - started:.1f}s"
+              + (" *best" if improved else ""), flush=True)
+        if args.patience and no_improvement >= args.patience:
+            print(f"Early stopping after {args.patience} unimproved epochs")
+            break
+
+    if best_state is None:
+        raise RuntimeError("Training did not produce a checkpoint")
+    model.load_state_dict(best_state)
+    print(f"Best held-out-font accuracy: {best_accuracy:.1%} (epoch {best_epoch})")
+    export_model(model, args.output)
+
+if __name__ == "__main__":
     try:
         main()
-    except (ValueError,OSError,EOFError) as exc:
-        raise SystemExit(f'Error: {exc}') from exc
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"Error: {exc}") from exc

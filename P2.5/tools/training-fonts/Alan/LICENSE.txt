@@ -1,0 +1,79 @@
+Handwriting Font License (HFL) v1.0
+
+Copyright (c) 2026 Alan Saucer. All rights reserved.
+
+1. Ownership
+
+This font software (the "Font"), including its original glyph designs, character mappings, metadata, and associated software files, was created by Alan Saucer.
+
+All rights, title, and interest in the Font are reserved by the copyright holder to the fullest extent permitted by applicable law.
+
+No ownership rights or licenses are granted except as expressly authorized in writing by the copyright holder.
+
+2. Permission Required
+
+Prior written permission from the copyright holder is required for any use of the Font, including but not limited to:
+
+- Personal, educational, or commercial use.
+- Installation or use in documents, presentations, graphics, or other creative works.
+- Use in websites, applications, software, or digital products.
+- Embedding in electronic documents or other media.
+- Copying, modifying, adapting, or creating derivative versions of the Font.
+- Sharing, distributing, sublicensing, or selling the Font.
+- Incorporating the Font into another font, font collection, or software package.
+
+Permission may be granted subject to additional terms, limitations, or conditions established by the copyright holder.
+
+3. Restrictions
+
+Unless expressly authorized in writing by the copyright holder, no person or entity may:
+
+1. Copy, reproduce, install, or use the Font.
+2. Modify, reverse engineer, convert, or create derivative versions of the Font.
+3. Redistribute, upload, publish, sell, sublicense, or otherwise make the Font available to third parties.
+4. Embed the Font in websites, applications, documents, or other products.
+5. Remove or alter copyright notices, licensing information, or authorship metadata.
+6. Claim ownership or authorship of the Font.
+7. Use the copyright holder's name to imply sponsorship, affiliation, or endorsement.
+
+4. Authorized Use
+
+Any permission granted by the copyright holder must be documented in writing.
+
+Unless the written authorization expressly provides otherwise:
+
+- Permission is non-exclusive and non-transferable.
+- Permission applies only to the specific uses authorized.
+- Permission does not include the right to redistribute or sublicense the Font.
+- Ownership remains with the copyright holder.
+- Any use outside the authorized scope requires additional written permission.
+
+5. Distribution and Availability
+
+The public availability of the Font, including through a website, repository, download link, or other distribution platform, does not constitute permission to use, copy, modify, or redistribute it.
+
+Possession or download of the Font does not grant any license or usage rights.
+
+6. Termination
+
+Any authorization granted under this license may be terminated in accordance with its written terms.
+
+Unauthorized use is prohibited. Any person who exceeds the scope of an authorization must immediately cease the unauthorized activity.
+
+7. Disclaimer
+
+THE FONT IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF OR INABILITY TO USE THE FONT.
+
+8. Reservation of Rights
+
+All rights not expressly granted in writing are reserved by the copyright holder.
+
+Nothing in this license shall be interpreted as granting any implied license, assignment of ownership, or permission beyond the scope of an express written authorization.
+
+---
+
+End of Handwriting Font License (HFL) v1.0
+
+Copyright (c) 2026 Alan Saucer. All rights reserved.
