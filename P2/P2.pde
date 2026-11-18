@@ -191,12 +191,12 @@ void draw()
     textSize(20); //restore the original font size
     textAlign(LEFT);
     fill(95);
-    if (candidatesReady)
-      text("Letter predictions: tap #1, #2, or #3 in the square", 70, 190);
-    else if (hasInk)
-      text(modelStatus.length()>0 ? modelStatus : "Recognizing handwriting...", 70, 190);
-    else
-      text("Draw one letter at a time in the black square", 70, 190);
+    // if (candidatesReady)
+    //   text("Letter predictions: tap #1, #2, or #3 in the square", 70, 190);
+    // else if (hasInk)
+    //   text(modelStatus.length()>0 ? modelStatus : "Recognizing handwriting...", 70, 190);
+    // else
+    //   text("Draw one letter at a time in the black square", 70, 190);
   }
  
  
