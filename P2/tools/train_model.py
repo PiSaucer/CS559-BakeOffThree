@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # train_model.py
-# Train the Processing-compatible MLTest CNN on downloaded EMNIST Letters and local fonts.
+# Train the Processing-compatible ML CNN on downloaded EMNIST Letters and local fonts.
 import argparse
 import gzip
 import random
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KEYS = ('c1.weight', 'c1.bias', 'c2.weight', 'c2.bias', 'fc.weight', 'fc.bias')
 
 def arguments():
-    p = argparse.ArgumentParser(description='Train MLTest CNN on local EMNIST Letters and fonts; export MLTEST-CNN-1 weights.',
+    p = argparse.ArgumentParser(description='Train ML CNN on local EMNIST Letters and fonts; export ML-CNN-1 weights.',
                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument('--dataset', choices=('both', 'emnist', 'fonts'), default='both')
     p.add_argument('--fonts-dir', type=Path, default=ROOT/'tools'/'training-fonts')
@@ -154,7 +154,7 @@ def font_dataset(fonts, count, seed):
     return torch.from_numpy(np.stack(images)[:,None]),torch.tensor(labels,dtype=torch.long)
 
 class Net(nn.Module):
-    '''Must match MLTest.pde and MLTEST-CNN-1 weight order.'''
+    '''Must match P2.pde and ML-CNN-1 weight order.'''
     def __init__(self):
         super().__init__()
         self.c1=nn.Conv2d(1,8,3,padding=1)
@@ -187,7 +187,7 @@ def evaluate(net,x,y,bs,device):
 def export_model(net,path):
     path=path.expanduser().resolve();path.parent.mkdir(parents=True,exist_ok=True)
     with path.open('w',encoding='utf-8',newline='\n') as out:
-        out.write('MLTEST-CNN-1\n')
+        out.write('ML-CNN-1\n')
         state=net.cpu().state_dict()
         for key in KEYS:
             values=state[key].detach().numpy().ravel()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # download_emnist.py
-# Download EMNIST Letters IDX files for offline MLTest training.
+# Download EMNIST Letters IDX files for offline ML training.
 
 import argparse
 import gzip
@@ -93,7 +93,7 @@ def download_one(url: str, dest: Path, timeout: float) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Download EMNIST Letters independently of MLTest model training.',
+        description='Download EMNIST Letters independently of ML model training.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument('--output-dir', type=Path, default=ROOT/'tools'/'emnist',

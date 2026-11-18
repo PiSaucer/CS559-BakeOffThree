@@ -1,14 +1,14 @@
-# MLTest — one Processing sketch for Java Mode and Processing.js
+# Prototype 2: Handwriting + CNN
 
-The **same** `MLTest.pde` runs in the Processing IDE's **Java Mode** and in the browser through Processing.js. The COSC 559 bakeoff trial logic, edit-distance scoring, WPM, penalty calculations, original comments, the one-inch input region, and the HTML touch-to-mouse scaffold are retained.
+The **same** `P2.pde` runs in the Processing IDE's **Java Mode** and in the browser through Processing.js. The COSC 559 bakeoff trial logic, edit-distance scoring, WPM, penalty calculations, original comments, the one-inch input region, and the HTML touch-to-mouse scaffold are retained.
 
 The only substantial replacement is the original scrolling alphabet picker. It is now a one-letter handwriting pad with three ranked CNN suggestions. The **DELETE** and **SPACE** hit targets remain inside the 1-inch square. SPACE inserts a space without changing the entered words.
 
 ## Files
 
 ```text
-MLTest/                       <-- Sketch folder must be named MLTest
-├── MLTest.pde                # All drawing, Java + web inference and scoring
+P2/                       <-- Sketch folder must be named P2
+├── P2.pde                # All drawing, Java + web inference and scoring
 ├── index.html                # Original web scaffold, with touch-drag forwarding
 ├── processing.min.js         # Processing.js runtime
 ├── data/
@@ -32,14 +32,14 @@ MLTest/                       <-- Sketch folder must be named MLTest
 
 ## Run in Java Mode (desktop)
 
-1. Open the folder's **`MLTest.pde`** with the [Processing IDE](https://processing.org/download/).
+1. Open the folder's **`P2.pde`** with the [Processing IDE](https://processing.org/download/).
 2. Choose **Java Mode** (the standard Processing mode).
 3. Click **Run**. No internet, TensorFlow.js, Python, libraries, or JavaScript bridge is required for this mode.
 
 ## Run in a browser (Processing.js)
 
 1. Keep the provided `index.html` and `processing.min.js` in the same folder.
-2. Serve the `MLTest` directory, e.g. `python3 -m http.server 8000`.
+2. Serve the `P2` directory, e.g. `python3 -m http.server 8000`.
 3. Open **`http://localhost:8000/`**.
 
 Do not load directly via `file://`: browsers can block the resource fetches used by Processing.js. No TensorFlow.js or `letter-ml.js` is required; the network is unnecessary once `processing.min.js` is local.
