@@ -123,54 +123,56 @@ void draw()
     fill(255);
     textAlign(CENTER, CENTER);
     textSize(12);
-    text("DELETE", x, y-sizeOfInputArea*0.40); //delete previous character
-    text("SPACE", x, y+sizeOfInputArea*0.40); //enter a space
+    text("DELETE", x, y-sizeOfInputArea*0.41); //delete previous character
+    text("SPACE", x, y+sizeOfInputArea*0.41); //enter a space
 
-    //draw bold arrows using lines rather than font glyphs for consistent appearance
+    // Drawing arrows
     stroke(255);
-    strokeWeight(5);
+    strokeWeight(3.5);
     strokeCap(ROUND);
     strokeJoin(ROUND);
     float arrowY = y;
-    float leftX = x-sizeOfInputArea*0.34;
-    float rightX = x+sizeOfInputArea*0.34;
-    line(leftX+12, arrowY, leftX-12, arrowY); //left arrow shaft
-    line(leftX-12, arrowY, leftX-3, arrowY-10); //left arrow upper head
-    line(leftX-12, arrowY, leftX-3, arrowY+10); //left arrow lower head
-    line(rightX-12, arrowY, rightX+12, arrowY); //right arrow shaft
-    line(rightX+12, arrowY, rightX+3, arrowY-10); //right arrow upper head
-    line(rightX+12, arrowY, rightX+3, arrowY+10); //right arrow lower head
+    float leftX = x - sizeOfInputArea * 0.38;
+    float rightX = x + sizeOfInputArea * 0.38;
+    line(leftX + 7, arrowY, leftX - 7, arrowY); //left arrow shaft
+    line(leftX - 7, arrowY, leftX - 1, arrowY - 6); //left arrow upper head
+    line(leftX - 7, arrowY, leftX - 1, arrowY + 6); //left arrow lower head
+    line(rightX - 7, arrowY, rightX + 7, arrowY); //right arrow shaft
+    line(rightX + 7, arrowY, rightX + 1, arrowY - 6); //right arrow upper head
+    line(rightX + 7, arrowY, rightX + 1, arrowY + 6); //right arrow lower head
     noStroke(); //restore original drawing style
 
-    // --- NEW CODE: Draw 2x2 grid of 4 letters in the center area ---
-    float gridX = x - sizeOfInputArea / 6.0f;
-    float gridY = y - (sizeOfInputArea * 3.0f / 10.0f);
-    float gridW = sizeOfInputArea / 3.0f;
-    float gridH = (sizeOfInputArea * 3.0f) / 5.0f;
+    // 2x2 grid setup
+    float gridW = sizeOfInputArea * 0.52f;
+    float gridH = sizeOfInputArea * 0.64f;
+    float gridX = x - gridW / 2.0f;
+    float gridY = y - gridH / 2.0f;
     float cellW = gridW / 2.0f;
     float cellH = gridH / 2.0f;
 
-    // Subtle divider lines for the 2x2 letter grid
-    stroke(80);
+    // Added a border and divider lines for the 2x2 letter grid
+    stroke(120);
     strokeWeight(1);
+    noFill();
+    rect(gridX, gridY, gridW, gridH);
     line(gridX + cellW, gridY, gridX + cellW, gridY + gridH);
     line(gridX, gridY + cellH, gridX + gridW, gridY + cellH);
     noStroke();
 
     fill(255);
-    textSize(22);
+    textSize(24);
     int startIdx = currentPage * lettersPerPage;
     for (int i = 0; i < lettersPerPage; i++) {
       int charIdx = startIdx + i;
       if (charIdx < alphabet.length()) {
         int col = i % 2;
-        int row = i / 2;
+        int row = int(i / 2); 
         float cx = gridX + col * cellW + cellW / 2.0f;
         float cy = gridY + row * cellH + cellH / 2.0f;
         text(alphabet.substring(charIdx, charIdx + 1), cx, cy - 2);
       }
     }
-    textSize(20); //restore the original font size
+    textSize(20); 
   }
  
   //drawFinger(); //no longer needed as we'll be deploying to an actual touchscreen device
@@ -190,27 +192,30 @@ void mousePressed()
 
   float x = width/2-sizeOfInputArea/2;
   float y = height/2-sizeOfInputArea/2;
-  float fifth = sizeOfInputArea/5;
+  float topBottomH = sizeOfInputArea * 0.18f; // height of DELETE and SPACE bars
+  float sideW = sizeOfInputArea * 0.24f;      // width of left and right arrow zones
+  float gridW = sizeOfInputArea * 0.52f;      // width of center 2x2 letter grid
+  float gridH = sizeOfInputArea * 0.64f;      // height of center 2x2 letter grid
 
-  if (didMouseClick(x, y+fifth, sizeOfInputArea/3, fifth*3)) //check if click in left arrow
+  if (didMouseClick(x, y + topBottomH, sideW, gridH)) //check if click in left arrow
   {
     currentPage = (currentPage + totalPages - 1) % totalPages; // wrap backward one page
   }
-  else if (didMouseClick(x+sizeOfInputArea*2/3, y+fifth, sizeOfInputArea/3, fifth*3)) //check if click in right arrow
+  else if (didMouseClick(x + sideW + gridW, y + topBottomH, sideW, gridH)) //check if click in right arrow
   {
     currentPage = (currentPage + 1) % totalPages; // wrap forward one page
   }
-  else if (didMouseClick(x+sizeOfInputArea/3, y+fifth, sizeOfInputArea/3, fifth*3)) //check if click occurred in 2x2 letter area
+  else if (didMouseClick(x + sideW, y + topBottomH, gridW, gridH)) //check if click occurred in 2x2 letter area
   {
-    // --- NEW CODE: Check which of the 4 cells was clicked ---
-    float gridX = x + sizeOfInputArea / 3.0f;
-    float gridY = y + fifth;
-    float cellW = (sizeOfInputArea / 3.0f) / 2.0f;
-    float cellH = (fifth * 3.0f) / 2.0f;
+    // 2x2 grid area
+    float gridX = x + sideW;
+    float gridY = y + topBottomH;
+    float cellW = gridW / 2.0f;
+    float cellH = gridH / 2.0f;
 
     for (int i = 0; i < lettersPerPage; i++) {
       int col = i % 2;
-      int row = i / 2;
+      int row = int(i / 2); 
       if (didMouseClick(gridX + col * cellW, gridY + row * cellH, cellW, cellH)) {
         int charIdx = currentPage * lettersPerPage + i;
         if (charIdx < alphabet.length()) {
@@ -219,12 +224,12 @@ void mousePressed()
       }
     }
   }
-  else if (didMouseClick(x, y, sizeOfInputArea, fifth)) //DELETE removes the last entered character
+  else if (didMouseClick(x, y, sizeOfInputArea, topBottomH)) //DELETE removes the last entered character
   {
     if (currentTyped.length()>0)
       currentTyped = currentTyped.substring(0, currentTyped.length()-1);
   }
-  else if (didMouseClick(x, y+fifth*4, sizeOfInputArea, fifth)) //SPACE inserts a space
+  else if (didMouseClick(x, y + topBottomH + gridH, sizeOfInputArea, topBottomH)) //SPACE inserts a space
   {
     currentTyped += " ";
   }
@@ -276,7 +281,7 @@ void nextTrial()
     println("Raw WPM: " + wpm); //output
     println("Freebie errors: " + freebieErrors); //output
     println("Penalty: " + penalty);
-    println("WPM w/ penalty: " + (wpm-penalty)); //yes, minus, becuase higher WPM is better
+    println("WPM w/ penalty: " + (wpm-penalty)); //yes, minus, because higher WPM is better
     println("==================");
 
     currTrialNum++; //increment by one so this mesage only appears once when all trials are done
