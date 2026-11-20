@@ -219,7 +219,8 @@ void mouseReleased()
                             pressStartY >= boxY && pressStartY <= boxY + sizeOfInputArea);
 
   // Drag and swipe between page
-  if (isDragging && startedInInput)
+  // if (isDragging && startedInInput)
+  if (startedInInput && abs(mouseX - pressStartX) > SWIPE_THRESHOLD)
   {
     float dx = mouseX - pressStartX;
     if (dx < -SWIPE_THRESHOLD) {

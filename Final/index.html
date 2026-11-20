@@ -40,7 +40,7 @@
 </head>
 
 <body>
-    <canvas id="p1-canvas" data-processing-sources="./Final.pde?v=1">
+    <canvas id="p1-canvas" data-processing-sources="./Final.pde?v=2">
     </canvas>
 
     <script>
@@ -111,6 +111,21 @@
         canvas.addEventListener("touchmove", function (e) {
             e.preventDefault();
             e.stopImmediatePropagation();
+
+            if (activeTouchId === null) return;
+
+            const touch = Array.from(e.changedTouches)
+                .find(t => t.identifier === activeTouchId);
+
+            if (!touch) return;
+
+            lastTouch = {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            };
+
+            sendMouse("mousemove", lastTouch);
+
         }, { passive: false, capture: true });
 
         function endTouch(e) {
@@ -119,13 +134,19 @@
 
             if (activeTouchId === null) return;
 
-            const ended = Array.from(e.changedTouches)
-                .some(t => t.identifier === activeTouchId);
+            const touch = Array.from(e.changedTouches)
+                .find(t => t.identifier === activeTouchId);
 
-            if (!ended) return;
+            if (!touch) return;
 
-            // Keep the press active long enough for
-            // draw() to detect the first start tap.
+            lastTouch = {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            };
+
+            // Update Processing's coordinates before releasing.
+            sendMouse("mousemove", lastTouch);
+
             const elapsed = performance.now() - pressStarted;
             const remaining = Math.max(0, 50 - elapsed);
 
